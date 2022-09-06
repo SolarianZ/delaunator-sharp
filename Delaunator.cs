@@ -27,34 +27,17 @@ namespace DelaunatorSharp
 
     public class Delaunator
     {
-        private readonly int[] EDGE_STACK = new int[512];
-
         /// <summary>
         /// One value per half-edge, containing the point index of where a given half edge starts.
         /// </summary>
-        public int[] Triangles { get; private set; }
-
-        /// <summary>
-        /// One value per half-edge, containing the opposite half-edge in the adjacent triangle, or -1 if there is no adjacent triangle
-        /// </summary>
-        public int[] HalfEdges { get; private set; }
+        public int[] Triangles { get; }
 
         /// <summary>
         /// The initial points Delaunator was constructed with.
         /// </summary>
-        public Vector2[] Points { get; private set; }
-
-        private readonly int hashSize;
-        private readonly int[] hullPrev;
-        private readonly int[] hullNext;
-        private readonly int[] hullTri;
-        private readonly int[] hullHash;
-
-        private readonly Vector2 circumcenter;
+        public Vector2[] Points { get; }
 
         private int trianglesLen;
-        private readonly float[] coords;
-        private readonly int hullStart;
 
 
         public Delaunator(IEnumerable<Vector2> points) : this(points.ToArray())
@@ -68,8 +51,10 @@ namespace DelaunatorSharp
                 throw new ArgumentException("Need at least 3 points.", nameof(points));
             }
 
+            var edgeStack = new int[512];
+
             Points = points;
-            coords = new float[Points.Length * 2];
+            var coords = new float[Points.Length * 2];
 
             for (var i = 0; i < Points.Length; i++)
             {
@@ -83,13 +68,15 @@ namespace DelaunatorSharp
 
             Triangles = new int[maxTriangles * 3];
 
-            HalfEdges = new int[maxTriangles * 3];
-            hashSize = (int)Math.Ceiling(Math.Sqrt(n));
+            // One value per half-edge, containing the opposite half-edge in the adjacent triangle,
+            // or -1 if there is no adjacent triangle
+            var halfEdges = new int[maxTriangles * 3];
+            var hashSize = (int)Math.Ceiling(Math.Sqrt(n));
 
-            hullPrev = new int[n];
-            hullNext = new int[n];
-            hullTri = new int[n];
-            hullHash = new int[hashSize];
+            var hullPrev = new int[n];
+            var hullNext = new int[n];
+            var hullTri = new int[n];
+            var hullHash = new int[hashSize];
 
             var ids = new int[n];
 
@@ -148,13 +135,13 @@ namespace DelaunatorSharp
             var i1x = coords[2 * i1];
             var i1y = coords[2 * i1 + 1];
 
-            var minRadius = double.PositiveInfinity;
+            var minRadius = float.PositiveInfinity;
 
             // find the third point which forms the smallest circumcircle with the first two
             for (int i = 0; i < n; i++)
             {
                 if (i == i0 || i == i1) continue;
-                var r = Circumradius(i0x, i0y, i1x, i1y, coords[2 * i], coords[2 * i + 1]);
+                var r = SqrCircumradius(i0x, i0y, i1x, i1y, coords[2 * i], coords[2 * i + 1]);
                 if (r < minRadius)
                 {
                     i2 = i;
@@ -165,7 +152,7 @@ namespace DelaunatorSharp
             var i2x = coords[2 * i2];
             var i2y = coords[2 * i2 + 1];
 
-            if (double.IsPositiveInfinity(minRadius))
+            if (float.IsPositiveInfinity(minRadius))
             {
                 throw new Exception("No Delaunay triangulation exists for this input.");
             }
@@ -183,7 +170,7 @@ namespace DelaunatorSharp
                 i2y = y;
             }
 
-            circumcenter = Circumcenter(i0x, i0y, i1x, i1y, i2x, i2y);
+            var circumcenter = Circumcenter(i0x, i0y, i1x, i1y, i2x, i2y);
 
             var dists = new float[n];
             for (var i = 0; i < n; i++)
@@ -195,7 +182,7 @@ namespace DelaunatorSharp
             Quicksort(ids, dists, 0, n - 1);
 
             // set up the seed triangle as the starting hull
-            hullStart = i0;
+            var hullStart = i0;
 
             hullNext[i0] = hullPrev[i2] = i1;
             hullNext[i1] = hullPrev[i0] = i2;
@@ -205,12 +192,12 @@ namespace DelaunatorSharp
             hullTri[i1] = 1;
             hullTri[i2] = 2;
 
-            hullHash[HashKey(i0x, i0y)] = i0;
-            hullHash[HashKey(i1x, i1y)] = i1;
-            hullHash[HashKey(i2x, i2y)] = i2;
+            hullHash[HashKey(i0x, i0y, hashSize, circumcenter)] = i0;
+            hullHash[HashKey(i1x, i1y, hashSize, circumcenter)] = i1;
+            hullHash[HashKey(i2x, i2y, hashSize, circumcenter)] = i2;
 
             trianglesLen = 0;
-            AddTriangle(i0, i1, i2, -1, -1, -1);
+            AddTriangle(i0, i1, i2, -1, -1, -1, halfEdges);
 
             var xp = 0f;
             var yp = 0f;
@@ -233,7 +220,7 @@ namespace DelaunatorSharp
                 var start = 0;
                 for (var j = 0; j < hashSize; j++)
                 {
-                    var key = HashKey(x, y);
+                    var key = HashKey(x, y, hashSize, circumcenter);
                     start = hullHash[(key + j) % hashSize];
                     if (start != -1 && start != hullNext[start]) break;
                 }
@@ -258,10 +245,10 @@ namespace DelaunatorSharp
                 if (e == int.MaxValue) continue; // likely a near-duplicate point; skip it
 
                 // add the first triangle from the point
-                var t = AddTriangle(e, i, hullNext[e], -1, -1, hullTri[e]);
+                var t = AddTriangle(e, i, hullNext[e], -1, -1, hullTri[e], halfEdges);
 
                 // recursively flip triangles from the point until they satisfy the Delaunay condition
-                hullTri[i] = Legalize(t + 2);
+                hullTri[i] = Legalize(t + 2, edgeStack, halfEdges, coords, hullPrev, hullTri, hullStart);
                 hullTri[e] = t; // keep track of boundary triangles on the hull
 
                 // walk forward through the hull, adding more triangles and flipping recursively
@@ -270,8 +257,8 @@ namespace DelaunatorSharp
 
                 while (Orient(x, y, coords[2 * next], coords[2 * next + 1], coords[2 * q], coords[2 * q + 1]))
                 {
-                    t = AddTriangle(next, i, q, hullTri[i], -1, hullTri[next]);
-                    hullTri[i] = Legalize(t + 2);
+                    t = AddTriangle(next, i, q, hullTri[i], -1, hullTri[next], halfEdges);
+                    hullTri[i] = Legalize(t + 2, edgeStack, halfEdges, coords, hullPrev, hullTri, hullStart);
                     hullNext[next] = next; // mark as removed
                     next = q;
 
@@ -285,8 +272,8 @@ namespace DelaunatorSharp
 
                     while (Orient(x, y, coords[2 * q], coords[2 * q + 1], coords[2 * e], coords[2 * e + 1]))
                     {
-                        t = AddTriangle(q, i, e, -1, hullTri[e], hullTri[q]);
-                        Legalize(t + 2);
+                        t = AddTriangle(q, i, e, -1, hullTri[e], hullTri[q], halfEdges);
+                        Legalize(t + 2, edgeStack, halfEdges, coords, hullPrev, hullTri, hullStart);
                         hullTri[q] = t;
                         hullNext[e] = e; // mark as removed
                         e = q;
@@ -301,21 +288,22 @@ namespace DelaunatorSharp
                 hullNext[i] = next;
 
                 // save the two new edges in the hash table
-                hullHash[HashKey(x, y)] = i;
-                hullHash[HashKey(coords[2 * e], coords[2 * e + 1])] = e;
+                hullHash[HashKey(x, y, hashSize, circumcenter)] = i;
+                hullHash[HashKey(coords[2 * e], coords[2 * e + 1], hashSize, circumcenter)] = e;
             }
 
             hullPrev = hullNext = hullTri = null; // get rid of temporary arrays
 
             //// trim typed triangle mesh arrays
             Triangles = Triangles.Take(trianglesLen).ToArray();
-            HalfEdges = HalfEdges.Take(trianglesLen).ToArray();
+            halfEdges = halfEdges.Take(trianglesLen).ToArray();
         }
 
 
         #region CreationLogic
 
-        private int Legalize(int a)
+        private int Legalize(int a, int[] edgeStack, int[] halfEdges, float[] coords,
+            int[] hullPrev, int[] hullTri, int hullStart)
         {
             var i = 0;
             int ar;
@@ -323,7 +311,7 @@ namespace DelaunatorSharp
             // recursion eliminated with a fixed-size stack
             while (true)
             {
-                var b = HalfEdges[a];
+                var b = halfEdges[a];
 
                 /* if the pair of triangles doesn't satisfy the Delaunay condition
                  * (p1 is inside the circumcircle of [p0, pl, pr]), flip them,
@@ -347,7 +335,7 @@ namespace DelaunatorSharp
                 {
                     // convex hull edge
                     if (i == 0) break;
-                    a = EDGE_STACK[--i];
+                    a = edgeStack[--i];
                     continue;
                 }
 
@@ -371,7 +359,7 @@ namespace DelaunatorSharp
                     Triangles[a] = p1;
                     Triangles[b] = p0;
 
-                    var hbl = HalfEdges[bl];
+                    var hbl = halfEdges[bl];
 
                     // edge swapped on the other side of the hull (rare); fix the halfedge reference
                     if (hbl == -1)
@@ -389,22 +377,22 @@ namespace DelaunatorSharp
                         } while (e != hullStart);
                     }
 
-                    Link(a, hbl);
-                    Link(b, HalfEdges[ar]);
-                    Link(ar, bl);
+                    Link(a, hbl, halfEdges);
+                    Link(b, halfEdges[ar], halfEdges);
+                    Link(ar, bl, halfEdges);
 
                     var br = b0 + (b + 1) % 3;
 
                     // don't worry about hitting the cap: it can only happen on extremely degenerate input
-                    if (i < EDGE_STACK.Length)
+                    if (i < edgeStack.Length)
                     {
-                        EDGE_STACK[i++] = br;
+                        edgeStack[i++] = br;
                     }
                 }
                 else
                 {
                     if (i == 0) break;
-                    a = EDGE_STACK[--i];
+                    a = edgeStack[--i];
                 }
             }
 
@@ -429,7 +417,7 @@ namespace DelaunatorSharp
                 ap * (ex * fy - ey * fx) < 0;
         }
 
-        private int AddTriangle(int i0, int i1, int i2, int a, int b, int c)
+        private int AddTriangle(int i0, int i1, int i2, int a, int b, int c, int[] halfEdges)
         {
             var t = trianglesLen;
 
@@ -437,21 +425,21 @@ namespace DelaunatorSharp
             Triangles[t + 1] = i1;
             Triangles[t + 2] = i2;
 
-            Link(t, a);
-            Link(t + 1, b);
-            Link(t + 2, c);
+            Link(t, a, halfEdges);
+            Link(t + 1, b, halfEdges);
+            Link(t + 2, c, halfEdges);
 
             trianglesLen += 3;
             return t;
         }
 
-        private void Link(int a, int b)
+        private void Link(int a, int b, int[] halfEdges)
         {
-            HalfEdges[a] = b;
-            if (b != -1) HalfEdges[b] = a;
+            halfEdges[a] = b;
+            if (b != -1) halfEdges[b] = a;
         }
 
-        private int HashKey(float x, float y)
+        private int HashKey(float x, float y, int hashSize, Vector2 circumcenter)
         {
             return (int)(Math.Floor(PseudoAngle(x - circumcenter.X, y - circumcenter.Y) * hashSize) % hashSize);
         }
@@ -518,10 +506,11 @@ namespace DelaunatorSharp
             (arr[i], arr[j]) = (arr[j], arr[i]);
         }
 
-        private static bool Orient(float px, float py, float qx, float qy, float rx, float ry) =>
+
+        public static bool Orient(float px, float py, float qx, float qy, float rx, float ry) =>
             (qy - py) * (rx - qx) - (qx - px) * (ry - qy) < 0;
 
-        private static float Circumradius(float ax, float ay, float bx, float by, float cx, float cy)
+        public static float SqrCircumradius(float ax, float ay, float bx, float by, float cx, float cy)
         {
             var dx = bx - ax;
             var dy = by - ay;
@@ -535,7 +524,7 @@ namespace DelaunatorSharp
             return x * x + y * y;
         }
 
-        private static Vector2 Circumcenter(float ax, float ay, float bx, float by, float cx, float cy)
+        public static Vector2 Circumcenter(float ax, float ay, float bx, float by, float cx, float cy)
         {
             var dx = bx - ax;
             var dy = by - ay;
@@ -550,7 +539,7 @@ namespace DelaunatorSharp
             return new Vector2(x, y);
         }
 
-        private static float SqrDist(float ax, float ay, float bx, float by)
+        public static float SqrDist(float ax, float ay, float bx, float by)
         {
             var dx = ax - bx;
             var dy = ay - by;
