@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.28803.352
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DelaunatorSharp", "DelaunatorSharp\DelaunatorSharp.csproj", "{75843EFD-3227-4D27-93C5-F32D8A234E4D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DelaunatorSharp", "DelaunatorSharp.csproj", "{75843EFD-3227-4D27-93C5-F32D8A234E4D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

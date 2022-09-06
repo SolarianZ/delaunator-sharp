@@ -8,6 +8,23 @@ using System.Numerics;
 
 namespace DelaunatorSharp
 {
+    public readonly struct Triangle
+    {
+        public readonly Vector2 Point0;
+
+        public readonly Vector2 Point1;
+
+        public readonly Vector2 Point2;
+
+
+        public Triangle(Vector2 point0, Vector2 point1, Vector2 point2)
+        {
+            Point0 = point0;
+            Point1 = point1;
+            Point2 = point2;
+        }
+    }
+
     public class Delaunator
     {
         private readonly int[] EDGE_STACK = new int[512];
@@ -33,8 +50,7 @@ namespace DelaunatorSharp
         private readonly int[] hullTri;
         private readonly int[] hullHash;
 
-        private float cx;
-        private float cy;
+        private readonly Vector2 circumcenter;
 
         private int trianglesLen;
         private readonly float[] coords;
@@ -167,14 +183,12 @@ namespace DelaunatorSharp
                 i2y = y;
             }
 
-            var center = Circumcenter(i0x, i0y, i1x, i1y, i2x, i2y);
-            this.cx = center.X;
-            this.cy = center.Y;
+            circumcenter = Circumcenter(i0x, i0y, i1x, i1y, i2x, i2y);
 
             var dists = new float[n];
             for (var i = 0; i < n; i++)
             {
-                dists[i] = SqrDist(coords[2 * i], coords[2 * i + 1], center.X, center.Y);
+                dists[i] = SqrDist(coords[2 * i], coords[2 * i + 1], circumcenter.X, circumcenter.Y);
             }
 
             // sort the points by distance from the seed triangle circumcenter
@@ -437,7 +451,10 @@ namespace DelaunatorSharp
             if (b != -1) HalfEdges[b] = a;
         }
 
-        private int HashKey(float x, float y) => (int)(Math.Floor(PseudoAngle(x - cx, y - cy) * hashSize) % hashSize);
+        private int HashKey(float x, float y)
+        {
+            return (int)(Math.Floor(PseudoAngle(x - circumcenter.X, y - circumcenter.Y) * hashSize) % hashSize);
+        }
 
         private static float PseudoAngle(float dx, float dy)
         {
@@ -548,7 +565,7 @@ namespace DelaunatorSharp
             var point0 = Points[Triangles[3 * triangleIndex]];
             var point1 = Points[Triangles[3 * triangleIndex + 1]];
             var point2 = Points[Triangles[3 * triangleIndex + 2]];
-            return new Triangle(triangleIndex, point0, point1, point2);
+            return new Triangle(point0, point1, point2);
         }
 
         public void GetTrianglePoints(int triangleIndex, out int pointIndex0, out int pointIndex1, out int pointIndex2)
