@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.0;net471</TargetFrameworks>
+    <TargetFrameworks>net471;netstandard2.1</TargetFrameworks>
     <Description>Fast Delaunay triangulation of 2D points
 Port from Mapbox's Delaunator project (JavaScript).</Description>
     <PackageProjectUrl>https://github.com/nol1fe/delaunator-sharp</PackageProjectUrl>

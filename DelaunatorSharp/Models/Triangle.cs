@@ -1,17 +1,24 @@
-﻿using System.Collections.Generic;
+﻿using System.Numerics;
 
 namespace DelaunatorSharp
 {
-    public struct Triangle : ITriangle
+    public readonly struct Triangle
     {
-        public int Index { get; set; }
+        public readonly int Index;
 
-        public IEnumerable<IPoint> Points { get; set; }
+        public readonly Vector2 Point0;
 
-        public Triangle(int t, IEnumerable<IPoint> points)
+        public readonly Vector2 Point1;
+
+        public readonly Vector2 Point2;
+
+
+        public Triangle(int index, Vector2 point0, Vector2 point1, Vector2 point2)
         {
-            Points = points;
-            Index = t;
+            Index = index;
+            Point0 = point0;
+            Point1 = point1;
+            Point2 = point2;
         }
     }
 }
